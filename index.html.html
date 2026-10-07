@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>รายงานผลการหาสมาชิกของคณะกรรมการ</title>
+  
+  <!-- Tailwind CSS & Font -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- React & React DOM -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- SheetJS (Excel Parser & Exporter) -->
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Sarabun', 'sans-serif'] },
+          colors: {
+            skyBlue: { 50: '#E6F7FF', 100: '#BAE7FF', 500: '#00A3E0', 600: '#0082B3', 700: '#006185' },
+            warmYellow: { 50: '#FFFBE6', 100: '#FFE58F', 400: '#FADB14', 500: '#D4B106' },
+            sageGreen: { 50: '#E8F5E9', 100: '#C8E6C9', 600: '#2E7D32', 700: '#1B5E20' }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen pb-12">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    const INITIAL_BOARD_MEMBERS = [
+      { id: 'bm-1', name: 'นายอบี ยะลา' },
+      { id: 'bm-2', name: 'นายยาโกบ สะสม' },
+      { id: 'bm-3', name: 'นายนิคม หิรัญ' },
+      { id: 'bm-4', name: 'นายสนอง วังผล' },
+      { id: 'bm-5', name: 'นายวุฒิสาร เจสาสน์' },
+      { id: 'bm-6', name: 'นายธีรศักดิ์ บุตรอีด' },
+      { id: 'bm-7', name: 'นายอำนวย บุตรหลำ' },
+      { id: 'bm-8', name: 'นายอุสมาน มะตัน' },
+      { id: 'bm-9', name: 'นายพิชัย กิ่งหมัน' },
+      { id: 'bm-10', name: 'นายสาคร บำรุงศรี' },
+      { id: 'bm-11', name: 'นายอธิภัทร โยธารักษ์' },
+      { id: 'bm-12', name: 'นายมะซากรี มาเเฆ' },
+      { id: 'bm-13', name: 'นายวิทยา เริงสมุทร' },
+      { id: 'bm-14', name: 'นายอับดุลเลาะห์ บรรดา' }
+    ];
+
+    const DEFAULT_MONTHS = [
+      { key: 1, name: 'มกราคม' }, { key: 2, name: 'กุมภาพันธ์' }, { key: 3, name: 'มีนาคม' },
+      { key: 4, name: 'เมษายน' }, { key: 5, name: 'พฤษภาคม' }, { key: 6, name: 'มิถุนายน' },
+      { key: 7, name: 'กรกฎาคม' }, { key: 8, name: 'สิงหาคม' }, { key: 9, name: 'กันยายน' },
+      { key: 10, name: 'ตุลาคม' }, { key: 11, name: 'พฤศจิกายน' }, { key: 12, name: 'ธันวาคม' }
+    ];
+
+    const INITIAL_MEMBERS = [
+      { id: 'm-1', name: 'นายสมชาย ดีมาก', boardMemberId: 'bm-6', monthKey: 1, registerDate: '2026-01-15' },
+      { id: 'm-2', name: 'นางกานดา ใจดี', boardMemberId: 'bm-6', monthKey: 1, registerDate: '2026-01-20' },
+      { id: 'm-3', name: 'นายอารี รักสงบ', boardMemberId: 'bm-7', monthKey: 2, registerDate: '2026-02-10' },
+      { id: 'm-4', name: 'นางซาร่าห์ อาหมัด', boardMemberId: 'bm-8', monthKey: 3, registerDate: '2026-03-05' }
+    ];
+
+    function App() {
+      const [boardMembers] = useState(INITIAL_BOARD_MEMBERS);
+      const [selectedYear, setSelectedYear] = useState(2569); // ปี พ.ศ. ปัจจุบัน
+      const [monthsList, setMonthsList] = useState(DEFAULT_MONTHS);
+
+      // โหลดและบันทึกข้อมูลแยกตามปี
+      const [members, setMembers] = useState(() => {
+        const saved = localStorage.getItem(`board_members_app_${selectedYear}`);
+        return saved ? JSON.parse(saved) : (selectedYear === 2569 ? INITIAL_MEMBERS : []);
+      });
+
+      useEffect(() => {
+        const saved = localStorage.getItem(`board_members_app_${selectedYear}`);
+        setMembers(saved ? JSON.parse(saved) : (selectedYear === 2569 ? INITIAL_MEMBERS : []));
+      }, [selectedYear]);
+
+      useEffect(() => {
+        localStorage.setItem(`board_members_app_${selectedYear}`, JSON.stringify(members));
+      }, [members, selectedYear]);
+
+      const [selectedMonth, setSelectedMonth] = useState('ALL');
+      const [searchTerm, setSearchTerm] = useState('');
+      const [activeBoardDetail, setActiveBoardDetail] = useState(null);
+
+      // Modal State
+      const [cellEdit, setCellEdit] = useState(null);
+      const [isFormOpen, setIsFormOpen] = useState(false);
+      const [editingMember, setEditingMember] = useState(null);
+      const [defaultBoardId, setDefaultBoardId] = useState('');
+      const [isMonthSettingsOpen, setIsMonthSettingsOpen] = useState(false);
+
+      const totalMembersCount = members.length;
+      
+      const topBoardMember = useMemo(() => {
+        let top = { name: '-', count: 0 };
+        boardMembers.forEach((b) => {
+          const count = members.filter((m) => m.boardMemberId === b.id).length;
+          if (count > top.count) top = { name: b.name, count };
+        });
+        return top;
+      }, [boardMembers, members]);
+
+      const activeMonthName = selectedMonth === 'ALL'
+        ? `ทั้งปี ${selectedYear}`
+        : monthsList.find((m) => m.key === selectedMonth)?.name || '';
+
+      const monthMembersCount = selectedMonth === 'ALL'
+        ? totalMembersCount
+        : members.filter((m) => m.monthKey === selectedMonth).length;
+
+      // ปรับจำนวนสมาชิกในเดือนนั้นๆ โดยตรง
+      const handleSetMemberCount = (boardId, monthKey, targetCount) => {
+        setMembers((prev) => {
+          const currentMems = prev.filter(m => m.boardMemberId === boardId && m.monthKey === monthKey);
+          const currentCount = currentMems.length;
+          const board = boardMembers.find(b => b.id === boardId);
+
+          if (targetCount === currentCount) return prev;
+
+          if (targetCount > currentCount) {
+            const addCount = targetCount - currentCount;
+            const yearAD = selectedYear - 543;
+            const monthStr = String(monthKey).padStart(2, '0');
+            const newItems = Array.from({ length: addCount }).map((_, i) => ({
+              id: `auto-${Date.now()}-${Math.random().toString(36).substr(2, 5)}-${i}`,
+              name: `สมาชิกใหม่คนที่ ${currentCount + i + 1} (${board ? board.name : ''})`,
+              boardMemberId: boardId,
+              monthKey: monthKey,
+              registerDate: `${yearAD}-${monthStr}-01`
+            }));
+            return [...prev, ...newItems];
+          } else {
+            const removeCount = currentCount - targetCount;
+            const idsToRemove = new Set(currentMems.slice(-removeCount).map(m => m.id));
+            return prev.filter(m => !idsToRemove.has(m.id));
+          }
+        });
+      };
+
+      // Import Excel
+      const handleImportExcel = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          try {
+            const data = new Uint8Array(evt.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+            const imported = [];
+            jsonData.forEach((row, idx) => {
+              if (idx < 2) return;
+              const boardName = row[4];
+              if (!boardName) return;
+
+              const board = boardMembers.find(b => b.name.trim() === String(boardName).trim());
+              if (board) {
+                monthsList.forEach((m, mIdx) => {
+                  const val = row[4 + (mIdx + 1)];
+                  if (val && val !== 0) {
+                    imported.push({
+                      id: `imp-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                      name: typeof val === 'string' ? val : `สมาชิกใหม่ (${board.name})`,
+                      boardMemberId: board.id,
+                      monthKey: m.key,
+                      registerDate: `${selectedYear - 543}-${String(m.key).padStart(2, '0')}-01`
+                    });
+                  }
+                });
+              }
+            });
+
+            if (imported.length > 0) {
+              setMembers((prev) => [...prev, ...imported]);
+              alert(`นำเข้าข้อมูลจาก Excel เรียบร้อยแล้ว จำนวน ${imported.length} รายการ (สำหรับปี ${selectedYear})`);
+            } else {
+              alert('นำเข้าไฟล์สำเร็จ แต่ไม่พบข้อมูลตรงตามโครงสร้างกรรมการ');
+            }
+          } catch (err) {
+            alert('เกิดข้อผิดพลาดในการนำเข้าไฟล์ Excel');
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      };
+
+      // Export Excel
+      const handleExportExcel = () => {
+        const exportData = boardMembers.map((b) => {
+          const row = { 'เจ้าหน้าที่/คณะกรรมการ': b.name };
+          let total = 0;
+          monthsList.forEach((m) => {
+            const count = members.filter(mem => mem.boardMemberId === b.id && mem.monthKey === m.key).length;
+            row[m.name] = count;
+            total += count;
+          });
+          row['ยอดรวม'] = total;
+          return row;
+        });
+
+        const worksheet = XLSX.utils.json_to_sheet(exportData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, `รายงานหาสมาชิก ${selectedYear}`);
+        XLSX.writeFile(workbook, `รายงานผลการหาสมาชิก_คณะกรรมการ_ปี_${selectedYear}.xlsx`);
+      };
+
+      const handleSaveMember = (data) => {
+        if (editingMember) {
+          setMembers((prev) => prev.map((m) => (m.id === data.id ? data : m)));
+        } else {
+          setMembers((prev) => [...prev, data]);
+        }
+      };
+
+      const handleDeleteMember = (id) => {
+        if (confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายชื่อสมาชิกนี้?')) {
+          setMembers((prev) => prev.filter((m) => m.id !== id));
+        }
+      };
+
+      const filteredBoard = boardMembers.filter((b) =>
+        b.name.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+
+      return (
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          {/* Header Bar */}
+          <header className="bg-skyBlue-500 text-white shadow-lg rounded-2xl p-6 mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl md:text-3xl font-bold tracking-wide">
+                  รายงานผลการหาสมาชิกของคณะกรรมการ
+                </h1>
+                {/* Year Selection Dropdown */}
+                <div className="relative">
+                  <select
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(Number(e.target.value))}
+                    className="bg-white text-skyBlue-700 font-extrabold text-lg px-3 py-1 rounded-xl shadow border border-skyBlue-100 cursor-pointer focus:outline-none"
+                  >
+                    {[2567, 2568, 2569, 2570, 2571, 2572].map((y) => (
+                      <option key={y} value={y}>ปี {y}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <p className="text-skyBlue-50 text-sm mt-1">
+                ระบบจัดการ อัปเดตข้อมูลเรียลไทม์ และเจาะลึกรายชื่อสมาชิกประจำปี {selectedYear} (พ.ศ. {selectedYear} / ค.ศ. {selectedYear - 543})
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setIsMonthSettingsOpen(true)}
+                className="bg-white/20 hover:bg-white/30 text-white px-3 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-1"
+                title="แก้ไข/จัดการรอบเดือนในปฏิทิน"
+              >
+                📅 ตั้งค่าเดือน
+              </button>
+
+              <label className="bg-sageGreen-600 hover:bg-sageGreen-700 text-white px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer shadow transition flex items-center gap-1">
+                📥 นำเข้า Excel
+                <input type="file" accept=".xlsx, .xls, .csv" onChange={handleImportExcel} className="hidden" />
+              </label>
+
+              <button
+                onClick={handleExportExcel}
+                className="bg-warmYellow-400 hover:bg-warmYellow-500 text-slate-900 px-4 py-2 rounded-xl text-sm font-bold shadow transition"
+              >
+                📊 ส่งออก Excel
+              </button>
+
+              <button
+                onClick={() => window.print()}
+                className="bg-white/20 hover:bg-white/30 text-white px-3 py-2 rounded-xl text-sm font-medium transition"
+              >
+                🖨️ พิมพ์
+              </button>
+
+              <button
+                onClick={() => {
+                  setEditingMember(null);
+                  setDefaultBoardId('');
+                  setIsFormOpen(true);
+                }}
+                className="bg-white text-skyBlue-600 hover:bg-skyBlue-50 px-4 py-2 rounded-xl text-sm font-bold shadow transition"
+              >
+                ➕ เพิ่มสมาชิกใหม่
+              </button>
+            </div>
+          </header>
+
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="bg-white border-l-4 border-skyBlue-500 rounded-2xl p-5 shadow-sm">
+              <p className="text-xs font-bold text-gray-400 uppercase">ยอดรวมสมาชิกใหม่ปี {selectedYear}</p>
+              <p className="text-3xl font-extrabold text-skyBlue-600 mt-1">{totalMembersCount} <span className="text-sm font-normal text-gray-500">คน</span></p>
+            </div>
+
+            <div className="bg-white border-l-4 border-warmYellow-400 rounded-2xl p-5 shadow-sm">
+              <p className="text-xs font-bold text-gray-400 uppercase">กรรมการยอดสูงสุด (ปี {selectedYear})</p>
+              <p className="text-lg font-bold text-slate-800 mt-1 truncate">{topBoardMember.name}</p>
+              <p className="text-xs font-bold text-warmYellow-500">{topBoardMember.count} สมาชิก</p>
+            </div>
+
+            <div className="bg-white border-l-4 border-sageGreen-600 rounded-2xl p-5 shadow-sm">
+              <p className="text-xs font-bold text-gray-400 uppercase">ยอดรวม ({activeMonthName})</p>
+              <p className="text-3xl font-extrabold text-sageGreen-600 mt-1">{monthMembersCount} <span className="text-sm font-normal text-gray-500">คน</span></p>
+            </div>
+
+            <div className="bg-white border-l-4 border-indigo-500 rounded-2xl p-5 shadow-sm">
+              <p className="text-xs font-bold text-gray-400 uppercase">ปีงบประมาณ/ปีปฏิทิน</p>
+              <p className="text-lg font-bold text-indigo-600 mt-1">พ.ศ. {selectedYear}</p>
+              <p className="text-xs text-gray-400">ค.ศ. {selectedYear - 543}</p>
+            </div>
+          </div>
+
+          {/* Table Area */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-6">
+            <div className="p-4 bg-slate-50 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
+              <input
+                type="text"
+                placeholder="🔍 ค้นหาชื่อกรรมการ..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full md:w-80 px-4 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-skyBlue-500 text-sm bg-white"
+              />
+
+              <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">
+                <button
+                  onClick={() => setSelectedMonth('ALL')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition ${
+                    selectedMonth === 'ALL'
+                      ? 'bg-skyBlue-500 text-white shadow'
+                      : 'bg-white text-gray-600 border hover:bg-slate-100'
+                  }`}
+                >
+                  ภาพรวมทั้งปี
+                </button>
+                {monthsList.map((m) => (
+                  <button
+                    key={m.key}
+                    onClick={() => setSelectedMonth(m.key)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition ${
+                      selectedMonth === m.key
+                        ? 'bg-skyBlue-500 text-white shadow'
+                        : 'bg-white text-gray-600 border hover:bg-slate-100'
+                    }`}
+                  >
+                    {m.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-skyBlue-50 text-skyBlue-700 text-xs uppercase border-b border-skyBlue-100">
+                    <th className="p-3 font-bold sticky left-0 bg-skyBlue-50 min-w-[180px]">เจ้าหน้าที่ / คณะกรรมการ</th>
+                    {monthsList.map((m) => (
+                      <th
+                        key={m.key}
+                        className={`p-3 text-center min-w-[65px] ${
+                          selectedMonth === m.key ? 'bg-warmYellow-100 text-slate-900 font-extrabold' : ''
+                        }`}
+                      >
+                        {m.name.length > 5 ? m.name.substring(0, 3) : m.name}
+                      </th>
+                    ))}
+                    <th className="p-3 text-center bg-sageGreen-50 text-sageGreen-700 font-bold min-w-[80px]">ยอดรวม</th>
+                    <th className="p-3 text-center min-w-[90px]">จัดการ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-sm">
+                  {filteredBoard.map((b) => {
+                    let rowTotal = 0;
+                    return (
+                      <tr key={b.id} className="hover:bg-skyBlue-50/40 transition">
+                        <td className="p-3 font-bold text-slate-800 sticky left-0 bg-white shadow-sm">
+                          {b.name}
+                        </td>
+                        {monthsList.map((m) => {
+                          const count = members.filter(mem => mem.boardMemberId === b.id && mem.monthKey === m.key).length;
+                          rowTotal += count;
+                          return (
+                            <td
+                              key={m.key}
+                              onClick={() => setCellEdit({ board: b, month: m, currentCount: count })}
+                              title="คลิกเพื่อแก้ไขจำนวนเลขในช่องนี้"
+                              className={`p-3 text-center font-semibold cursor-pointer hover:bg-skyBlue-100/60 transition ${
+                                count > 0 ? 'text-skyBlue-600 font-bold' : 'text-slate-300'
+                              } ${selectedMonth === m.key ? 'bg-warmYellow-50' : ''}`}
+                            >
+                              {count > 0 ? count : '-'}
+                            </td>
+                          );
+                        })}
+                        <td className="p-3 text-center font-extrabold text-sageGreen-600 bg-sageGreen-50/50">
+                          {rowTotal}
+                        </td>
+                        <td className="p-3 text-center">
+                          <button
+                            onClick={() => setActiveBoardDetail(b)}
+                            className="bg-skyBlue-50 text-skyBlue-600 hover:bg-skyBlue-500 hover:text-white px-2.5 py-1 rounded-lg text-xs font-bold transition"
+                          >
+                            👁️ เช็ครายชื่อ
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Quick Edit Cell Modal */}
+          {cellEdit && (
+            <QuickCountEditModal
+              board={cellEdit.board}
+              month={cellEdit.month}
+              year={selectedYear}
+              currentCount={cellEdit.currentCount}
+              onClose={() => setCellEdit(null)}
+              onSave={(newCount) => {
+                handleSetMemberCount(cellEdit.board.id, cellEdit.month.key, newCount);
+                setCellEdit(null);
+              }}
+            />
+          )}
+
+          {/* Modal - เจาะลึกรายชื่อสมาชิกกรรมการ */}
+          {activeBoardDetail && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+              <div className="bg-white rounded-2xl max-w-xl w-full max-h-[85vh] overflow-hidden flex flex-col shadow-2xl">
+                <div className="bg-skyBlue-500 text-white p-5 flex justify-between items-center">
+                  <div>
+                    <p className="text-xs text-skyBlue-100 font-bold uppercase">รายละเอียดสมาชิกใหม่ประจำปี {selectedYear}</p>
+                    <h2 className="text-xl font-bold">{activeBoardDetail.name}</h2>
+                  </div>
+                  <button onClick={() => setActiveBoardDetail(null)} className="text-white text-xl font-bold">✕</button>
+                </div>
+
+                <div className="bg-warmYellow-50 p-4 flex justify-between items-center border-b border-warmYellow-100">
+                  <span className="text-sm font-bold text-slate-700">
+                    ยอดรวมทั้งหมด: <span className="text-skyBlue-600 text-lg">{members.filter(m => m.boardMemberId === activeBoardDetail.id).length}</span> คน
+                  </span>
+                  <button
+                    onClick={() => {
+                      const bId = activeBoardDetail.id;
+                      setActiveBoardDetail(null);
+                      setEditingMember(null);
+                      setDefaultBoardId(bId);
+                      setIsFormOpen(true);
+                    }}
+                    className="bg-sageGreen-600 hover:bg-sageGreen-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition"
+                  >
+                    ➕ เพิ่มสมาชิกให้ท่านนี้
+                  </button>
+                </div>
+
+                <div className="p-5 overflow-y-auto flex-1 space-y-4">
+                  {monthsList.map((m) => {
+                    const monthMems = members.filter(mem => mem.boardMemberId === activeBoardDetail.id && mem.monthKey === m.key);
+                    if (monthMems.length === 0) return null;
+
+                    return (
+                      <div key={m.key} className="border border-slate-100 rounded-xl overflow-hidden">
+                        <div className="bg-slate-50 px-4 py-2 text-xs font-bold text-slate-600 flex justify-between border-b">
+                          <span>ประจำเดือน {m.name}</span>
+                          <span className="text-skyBlue-600">{monthMems.length} คน</span>
+                        </div>
+                        <div className="divide-y divide-slate-100">
+                          {monthMems.map((mem) => (
+                            <div key={mem.id} className="p-3 flex justify-between items-center hover:bg-slate-50">
+                              <div>
+                                <p className="font-bold text-slate-800">{mem.name}</p>
+                                <p className="text-xs text-slate-400">วันที่สมัคร: {mem.registerDate || '-'}</p>
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => {
+                                    setEditingMember(mem);
+                                    setIsFormOpen(true);
+                                  }}
+                                  className="text-xs bg-slate-100 hover:bg-skyBlue-50 hover:text-skyBlue-600 p-1.5 rounded-lg font-bold"
+                                >
+                                  ✏️ แก้ไข
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteMember(mem.id)}
+                                  className="text-xs bg-slate-100 hover:bg-red-50 hover:text-red-600 p-1.5 rounded-lg font-bold"
+                                >
+                                  🗑️ ลบ
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="p-4 border-t bg-slate-50 text-right">
+                  <button onClick={() => setActiveBoardDetail(null)} className="px-5 py-2 bg-slate-200 text-slate-700 font-bold rounded-xl text-sm">
+                    ปิดหน้าต่าง
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal - ฟอร์มเพิ่ม/แก้ไขสมาชิก */}
+          {isFormOpen && (
+            <MemberFormModal
+              onClose={() => setIsFormOpen(false)}
+              onSave={handleSaveMember}
+              boardMembers={boardMembers}
+              monthsList={monthsList}
+              selectedYear={selectedYear}
+              editingMember={editingMember}
+              defaultBoardId={defaultBoardId}
+            />
+          )}
+
+          {/* Modal - ตั้งค่าเดือนปฏิทิน */}
+          {isMonthSettingsOpen && (
+            <MonthSettingsModal
+              monthsList={monthsList}
+              onClose={() => setIsMonthSettingsOpen(false)}
+              onSave={(newList) => {
+                setMonthsList(newList);
+                setIsMonthSettingsOpen(false);
+              }}
+            />
+          )}
+        </div>
+      );
+    }
+
+    // Modal แก้ไขตัวเลขแบบรวดเร็ว
+    function QuickCountEditModal({ board, month, year, currentCount, onClose, onSave }) {
+      const [count, setCount] = useState(currentCount);
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        onSave(Math.max(0, parseInt(count) || 0));
+      };
+
+      return (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-sm w-full overflow-hidden shadow-2xl">
+            <div className="bg-skyBlue-500 text-white p-4 flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-base">แก้ไขยอดสมาชิก (ปี {year})</h3>
+                <p className="text-xs text-skyBlue-100">{board.name} ({month.name})</p>
+              </div>
+              <button onClick={onClose} className="text-white text-lg font-bold">✕</button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-2">ระบุจำนวนสมาชิก (คน)</label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCount(prev => Math.max(0, prev - 1))}
+                    className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-lg flex items-center justify-center"
+                  >
+                    -
+                  </button>
+                  <input
+                    type="number"
+                    min="0"
+                    value={count}
+                    onChange={(e) => setCount(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-full text-center py-2 px-3 border-2 border-skyBlue-500 rounded-xl font-extrabold text-2xl text-skyBlue-600 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setCount(prev => prev + 1)}
+                    className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-lg flex items-center justify-center"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCount(0)}
+                  className="w-full py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl text-xs font-bold transition"
+                >
+                  🗑️ ล้างเป็น 0
+                </button>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t">
+                <button type="button" onClick={onClose} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold">
+                  ยกเลิก
+                </button>
+                <button type="submit" className="px-4 py-2 bg-skyBlue-500 hover:bg-skyBlue-600 text-white rounded-xl text-sm font-bold shadow">
+                  💾 บันทึกจำนวน
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Modal - ตั้งค่าชื่อเดือน/รอบปฏิทิน
+    function MonthSettingsModal({ monthsList, onClose, onSave }) {
+      const [months, setMonths] = useState([...monthsList]);
+
+      const handleNameChange = (index, newName) => {
+        const updated = [...months];
+        updated[index].name = newName;
+        setMonths(updated);
+      };
+
+      return (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+            <div className="bg-skyBlue-500 text-white p-4 flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-base">📅 ตั้งค่ารอบเดือนตามปฏิทิน</h3>
+                <p className="text-xs text-skyBlue-100">สามารถแก้ไขชื่อเดือน/หัวข้อคอลัมน์ได้</p>
+              </div>
+              <button onClick={onClose} className="text-white text-lg font-bold">✕</button>
+            </div>
+
+            <div className="p-4 overflow-y-auto space-y-3 flex-1">
+              {months.map((m, idx) => (
+                <div key={m.key} className="flex items-center gap-3 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                  <span className="text-xs font-bold text-slate-400 w-8">ลำดับ {idx + 1}</span>
+                  <input
+                    type="text"
+                    value={m.name}
+                    onChange={(e) => handleNameChange(idx, e.target.value)}
+                    className="w-full px-3 py-1.5 border rounded-lg text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-skyBlue-500"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="p-4 border-t bg-slate-50 flex justify-between items-center">
+              <button
+                type="button"
+                onClick={() => setMonths(DEFAULT_MONTHS)}
+                className="text-xs text-red-600 hover:underline font-bold"
+              >
+                🔄 คืนค่าเริ่มต้น (12 เดือน)
+              </button>
+              <div className="flex gap-2">
+                <button type="button" onClick={onClose} className="px-4 py-2 bg-slate-200 text-slate-700 rounded-xl text-xs font-bold">
+                  ยกเลิก
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSave(months)}
+                  className="px-4 py-2 bg-skyBlue-500 hover:bg-skyBlue-600 text-white rounded-xl text-xs font-bold shadow"
+                >
+                  💾 บันทึกตารางเดือน
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function MemberFormModal({ onClose, onSave, boardMembers, monthsList, selectedYear, editingMember, defaultBoardId }) {
+      const yearAD = selectedYear - 543;
+      const [name, setName] = useState(editingMember ? editingMember.name : '');
+      const [boardMemberId, setBoardMemberId] = useState(editingMember ? editingMember.boardMemberId : (defaultBoardId || boardMembers[0]?.id));
+      const [monthKey, setMonthKey] = useState(editingMember ? editingMember.monthKey : monthsList[0]?.key || 1);
+      const [registerDate, setRegisterDate] = useState(editingMember ? editingMember.registerDate : `${yearAD}-01-01`);
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!name.trim()) return alert('กรุณากรอกชื่อสมาชิกใหม่');
+
+        onSave({
+          id: editingMember ? editingMember.id : `m-${Date.now()}`,
+          name,
+          boardMemberId,
+          monthKey: Number(monthKey),
+          registerDate
+        });
+        onClose();
+      };
+
+      return (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl">
+            <div className="bg-skyBlue-500 text-white p-5 flex justify-between items-center">
+              <h3 className="font-bold text-lg">
+                {editingMember ? '✏️ แก้ไขข้อมูลสมาชิก' : `➕ เพิ่มสมาชิกใหม่ (ปี ${selectedYear})`}
+              </h3>
+              <button onClick={onClose} className="text-white text-xl font-bold">✕</button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">ชื่อ-นามสกุล สมาชิกใหม่</label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="เช่น นายสมชาย สุขใจ"
+                  className="w-full px-4 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-skyBlue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">กรรมการผู้จัดหา</label>
+                <select
+                  value={boardMemberId}
+                  onChange={(e) => setBoardMemberId(e.target.value)}
+                  className="w-full px-4 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-skyBlue-500 bg-white"
+                >
+                  {boardMembers.map((b) => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">ประจำเดือน</label>
+                  <select
+                    value={monthKey}
+                    onChange={(e) => setMonthKey(e.target.value)}
+                    className="w-full px-4 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-skyBlue-500 bg-white"
+                  >
+                    {monthsList.map((m) => (
+                      <option key={m.key} value={m.key}>{m.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">วันที่สมัคร</label>
+                  <input
+                    type="date"
+                    value={registerDate}
+                    onChange={(e) => setRegisterDate(e.target.value)}
+                    className="w-full px-4 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-skyBlue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold transition"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-skyBlue-500 hover:bg-skyBlue-600 text-white rounded-xl text-sm font-bold shadow transition"
+                >
+                  {editingMember ? '💾 บันทึกการแก้ไข' : '➕ เพิ่มสมาชิก'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
